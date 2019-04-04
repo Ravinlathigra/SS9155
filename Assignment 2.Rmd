@@ -1,0 +1,517 @@
+---
+title: "SS9155 - Assignment 2 - 250620601"
+author: "Ravin Lathigra"
+date: '2019-01-28'
+output:
+  pdf_document:
+    latex_engine: xelatex
+always_allow_html: yes
+---
+
+<style>
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=100)
+```
+
+---
+
+##R Packages & Libraries
+```{r, eval=TRUE, echo = TRUE, warning = FALSE, message=FALSE}
+library(corrplot)    #Visualize Correlation between variables
+library(kableExtra)  #Style tables
+library(tidyverse)   #contains ggplot2,dplyr,tidyr, readr,purr,tibble,stringr,forcats
+library(formatR)     #Improve readability of code
+library(e1071)       #Functions for latent class analysis, Fourier transform ect.
+library(VIM)         #Knn
+library(ggfortify)   #Add on to ggplot2 to allow for more plot types
+library(Rtsne)       #Dimension reduction classification
+library(caret)       #streamlined model development
+library(RColorBrewer)#Control colours of visualizations 
+library(GGally)      #Contains ggpairs plots
+library(lmtest)      #Test for linear assumptions
+library(MASS)
+library(faraway)
+
+```
+
+```{r}
+
+A2 <- pima
+
+str(A2)
+summary(A2)
+
+```
+
+##Question 2
+
+Using data sourced from the National Institute of Diabetes and Digestive and Kidney Diseases pertaining to diabetes in Pima Indians we will explore the relationships between the available predictors and the presence of diabetes.
+
+
+###Question 2a
+
+The diagnosis of diabetes is indicative that the body is resistant to insulin produced by the pancreas.  Insulin is required to pass glucose to the body's cells, however when the body builds up a resistance to insulin, it can no longer fuel cells and instead leads to an increase build up of glucose in the blood.  The goal of our investigations is to model the diagnosis of diabetes for an individual.  Within the dataset, diabetes is encoded as a binary response variable with 0 corresponding to as negative diagnosis and 1 otherwise. 
+
+If an individual has diabetes, we may expect increased levels of insulin and volatile or increased blood sugar levels.  `Figure 1.0` illustrates the distribution of insulin levels split by known diagnosis of diabetes.  The plot demonstrates a few interesting observations which seem counterintuitive.  
+
++ If a positive diagnosis of diabetes indicates that the body is resistant to insulin, it would be expected that the distribution of insulin of diabetics be shifted towards higher levels than non diebetics.  The plot confirms this intuition.
+
++ An intersting set of observation are those with 0 insulin.  Humans cannot have a zero insulin level i.e there is a minimum amount required to regulate blood sugar. 
+
+
+```{r 1a, eval = T, echo = F,warning=F}
+
+A2 <- A2 %>%
+        mutate(test = factor(test))
+
+ggplot(A2)+
+  geom_histogram(aes(x = insulin, y = ..count..,fill = factor(test)), position = "dodge",alpha = .4)+
+  ggtitle("Distribution of Insulin") +
+  labs(caption = "Figure 1.0 | Source: Pima Dataset http://archive.ics.uci.edu/ml/",
+       subtitle = "Split by diagnosed presence of diabetes",
+       x = "Insulin",
+       y = "Count")+
+  scale_fill_manual(breaks = c(0,1),
+                    values = c("red","blue"),
+                    name = "Diabetes Diagnosis")+
+  theme_light()+
+  theme(legend.position = "bottom",
+        legend.background = element_rect(fill="white"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8))
+
+
+
+
+```
+
+###Question 2b
+
+Zero insulin levels are not valid observations, therefore it would be interesting to observe the distribution of insulin levels without considering these NA observations.  `Figure 2.0` illustrates the distribution of insulin levels split by known diagnosis of diabetes while omiting NA values.  This plot better represents the differences in distributions of insulin levels between observations from individuals with and without diabetes. As expected, the insulin levels in those diagnosed with diabetes tend to exceed those with negative diagnosis.
+
+```{r 1b, eval = T, echo = F,warning=F}
+
+A2_b <- A2 %>%
+        mutate(insulin = replace(insulin,insulin ==0,NA))
+
+ggplot(A2_b)+
+  geom_histogram(aes(x = insulin, y = ..count..,fill = factor(test)), position = "dodge",alpha = .4)+
+  ggtitle("Distribution of Insulin") +
+  labs(caption = "Figure 2.0 | Source: Pima Dataset http://archive.ics.uci.edu/ml/",
+       subtitle = "Split by diagnosed presence of diabetes",
+       x = "Insulin",
+       y = "Count")+
+  scale_fill_manual(breaks = c(0,1),
+                    values = c("red","blue"),
+                    name = "Diabetes Diagnosis")+
+  theme_light()+
+  theme(legend.position = "bottom",
+        legend.background = element_rect(fill="white"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8))
+
+```
+
+###Question 2c
+
+After replacing NA values from `insulin` we should review other model features that may also require replacing 0's with NA.  `Figure 3.0` displays histograms for all features allowing for comparisons between those with and without diabetes. `bmi`, `diastolic`, `glucose`, `pregnant` and `triceps` all have observations that were zero. While `bmi`, `diastolic`, `glucose`, and `triceps` should have strictly positive non-zero values, `pregnant` and indicator for the number of pregnancies that an individual has had may be zero.  As such, we will set all zero values to NA for predictors other than `pregnant`.
+
+```{r 1c, eval = T, echo = F,warning=F}
+
+A2_c1 <- A2_b %>%
+  filter(test == 0) %>%
+  dplyr::select(-test) %>%
+  gather() %>%
+  mutate(test = 0)
+
+A2_c2 <- A2_b %>%
+  filter(test == 1) %>%
+  dplyr::select(-test) %>%
+  gather() %>%
+  mutate(test = 1)
+
+A2_c <- rbind(A2_c1,A2_c2)
+
+ggplot(A2_c) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(aes(x = value,fill = factor(test)),alpha = 0.4,position = "dodge")+
+  scale_fill_manual(breaks = c(0,1),
+                    values = c("red","blue"),
+                    name = "Diabetes Diagnosis")+
+  theme(legend.position = "right",
+        legend.background = element_rect(fill="white"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8))+
+  ggtitle("Distribution of Features") +
+  labs(caption = "Figure 3.0 | Source: Pima Dataset http://archive.ics.uci.edu/ml/",
+       subtitle = "Split by diagnosed presence of diabetes",
+       y = "Count")
+
+
+```
+
+Once the zero values have been recoded to NA, we can fit a logistic regression tot the data.  The following summary output summarizes the final model.  Notice that the number of observations used for the model was only 392 compared to the origional 768 records.  The reduction in observations is attributable to the observations that have non-NA values across all features.
+
+```{r 1c_model, eval = T, echo = F,warning=F}
+A2_c3 <- A2_b %>%
+        mutate_at(vars("bmi","diastolic","glucose","triceps"),funs(ifelse(.==0,NA,.)))
+
+q2c_model <- glm(test~.,data = A2_c3,family = "binomial")
+
+sumary(q2c_model)
+
+```
+
+###Question 2d
+
+From the summary provided in the previous question we notice that a few predictors have large p-values.  What would happen to our model if we removed `triceps` and `insulin` from the feature space?   
+
+The following summary displays the final model considering a reduced feature space:
+
+```{r 1d_model, eval = T, echo = F,warning=F}
+q2d_model <- glm(test~.-insulin-triceps,data = A2_c3,family = "binomial")
+
+sumary(q2d_model)
+
+```
+
+ We can make a direct comparison between these models using analysis of deviance where the null hypothesis is the reduced model and alternative is the full model previously defined. Considering a 5% significance level the following analysis of deviance table yields a p-value of 0.65.  Therefore we fail to reject the null hypothesis which leads us to consider removing `triceps` and `insulin` from the feature space.
+ 
+ 
+```{r 1d2_model, eval = T, echo = F,warning=F}
+
+anova(q2d_model,q2c_model,test="Chi")
+
+
+```
+
+
+###Question 2e
+
+We have shown that we may consider removing `triceps` and `insulin` from the model, however, we may want to investigate what the best subset of predictors that can be considered are.  Using backwards selecting and Akaike Information Criterion, we can identify the best subset of predictors that can be considered.  Prior to performing the stepwise feature reduction, we need to omit NA observations.
+
+```{r 1e_model, eval = T, echo = F,warning=F}
+
+A2_e <- A2_c3 %>% na.omit()
+
+q2e_model <- glm(test~.,data = A2_e,family = "binomial")
+
+
+q2e_step_model <- step(q2e_model,trace = 0)
+
+sumary(q2e_step_model)
+```
+
+The above summary describes the backward selected model ultimately determining that the predictors most critical to predicting the diagnosis of diabetes are `pregnant`, `glucose`, `bmi`,`diabetes`, and `age`.  The model was constructed using 392 observations of which none contained missing values
+
+
+###Question 2f
+
+A drawback we have experienced thus far is that we sacrifice a significant proportion of data to records that had missing values.  Perhaps there is a way to preserve this data to some degree to improve model perfomance.  By creating a new predictor `check` that is a binary feature indicating the presence of at least one missing record within a particular tuple, we can assess the strength of association between missing records and diagnosis.  From there, we can construct a model in which test is the response and `check` is the predictor.
+
+The following analysis of deviance summary, demonstates that there is not a significant relationship between completeness of records and the diagnosis.  As such, I suggest that it is most appropriate to consider the stepwise model defined in 2e.
+
+```{r 1f_model, eval = T, echo = F,warning=F}
+
+A2_f <- A2_c3 %>% 
+          mutate(check = ifelse(rowSums(is.na(.))>0,1,0))
+
+q2f_model <- glm(test~ check,data = A2_f,family = "binomial")
+q2f_model2 <- glm(test~ 1,data = A2_f,family = "binomial")
+    
+
+anova(q2f_model,q2f_model2,test = "Chi")
+```
+
+```{r 1f2_model, eval = T, echo = F,warning=F}
+A2_f_v2 <- A2_f %>%
+  dplyr::select(pregnant,diabetes,age,check,test)
+
+q2f_model <- glm(test~.,data = A2_f_v2,family = "binomial")
+
+
+q2f_step_model <- step(q2f_model,trace = 0)
+
+sumary(q2f_step_model)
+
+```
+
+###2g 
+
+With the final model defined, we can explore relationships of predictors further.  In particular, we are interested in the diagnosis of diabetes considering BMI.  To explore this, we can explore the following *What is the difference in the odds of testing positive for diabetes for a woman with a BMI at the first quartile compared with a woman at the third quartile, assuming that all other factors are held constant?*
+
+The coefficient of BMI is 0.078.
+
+1st quantile = 28.4
+3rd quantile = 37.1
+
+$${Odds} = e^{Coef_{BMI}*(quantile_{3}-quantile_{1})}$$
+
+
+```{r 1g, eval = T, echo = F,warning=F}
+log_coefs <- coef(q2e_step_model)[4]
+
+diff_quantile <- quantile(A2_e$bmi)[4]-quantile(A2_e$bmi)[2]
+
+odds <- exp(log_coefs*(diff_quantile))
+
+print(c("If all other factors are held constant, the odds of a woman at the third quartile is ", odds, " times the odds that of a woman at the first quartile."))
+
+
+bmi_confint <- confint(q2e_step_model)[4,]
+
+```
+
+With the odds calculated, we can develope a 95% confidence interval for this difference.  *Table Confidence Interval - BMI* shows the confidence interval for BMI which we can use to develop a confidence interval of the difference.
+
+$${lower \space bound} = e^{(quantile_{3}-quantile_{1})*{lower \space bound\space BMI \space Confidence Interval}}$$
+
+$${Upper \space bound} = e^{(quantile_{3}-quantile_{1})*{Upper \space bound\space BMI \space Confidence Interval}}$$
+
+The final confidence interval for the measured difference is shown in the table *95% Confidence Interval - BMI considering differences between 1st and 3rd Quantile*
+
+
+```{r 1g2, eval = T, echo = F,warning=F}
+
+bmi_confint <- data.frame(confint(q2e_step_model)[4,]) %>%
+  rownames_to_column()
+
+colnames(bmi_confint) = c("Bounds of Confidence Interval","Value")
+
+kable(bmi_confint,booktabs = TRUE,
+      caption = "Confidence Interval - BMI", 
+      align = rep("c", ncol(bmi_confint))) %>%
+  kable_styling(position = "center",latex_options = "hold_position")
+
+lb <- exp(diff_quantile*bmi_confint[1,2])
+ub <- exp(diff_quantile*bmi_confint[2,2])
+
+bmi_diff_confint <- data.frame(lb,ub)
+rownames(bmi_diff_confint) = "95% Confidence Interval"
+colnames(bmi_diff_confint) = c("Lower Bound","Upper Bound")
+
+```
+
+
+```{r, eval = T, echo = F,warning=F}
+
+kable(bmi_diff_confint,booktabs = TRUE,
+      caption = "95% Confidence Interval - BMI considering differences between 1st and 3rd Quantile", 
+      )%>%
+  kable_styling(latex_options = "hold_position")
+
+```
+
+###2h 
+To compare the diastolic blood pressure between diagnosis of diabetes, we can utilize box plots.  `Figure 4.0` shows the distribution of diastolic blood pressures in women with and without diabetes.   It may suggest that the blood pressures of diabetic patients tends to be higher than those with negative diagnosis.
+
+The question is then if we have evidence of eleveated blood pressure in those with postive diagnosis, is this not a significant predictor to consider.  
+
+If we refer back to the final model that used `pregnant`, `glucose`, `bmi`,`diabetes`, and `age` as its features, which were selected using backwards selection, why was `diastolic` not considered.  This discrepency is explained by, in the presence of the other model predictors, `diastolic` does not contribute significantly to the diagnosis.
+
+```{r 1h, eval = T, echo = F,warning=F}
+
+ggplot(A2_e)+
+  geom_boxplot(aes(y = diastolic , fill = factor(test)),alpha = .5)+
+  ggtitle("Distribution of Diastolic Blood Pressure") +
+  labs(caption = "Figure 4.0 | Source: Pima Dataset http://archive.ics.uci.edu/ml/",
+       subtitle = "Split by diagnosed presence of diabetes",
+       x = "Insulin",
+       y = "Diastolic")+
+  scale_fill_manual(breaks = c(0,1),
+                    values = c("red","blue"),
+                    name = "Diabetes Diagnosis")+
+  theme_light()+
+  theme(legend.position = "bottom",
+        legend.background = element_rect(fill="white"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+
+```
+
+
+##Question 3
+
+###Question 3a
+
+Figures 5.0 - 7.0 illustrate the relationship between the response variable `kyphosis` and the predictors `Age`, `Number`, and `Start`.  
+
++Some immediate observations that can be made from the plots are that age, while there may be a slight tendency for lower ages to to not have kyphosis compared ot those that do as well as decreased variance in the ages that had kyphosis.
+
++The number of vertebrae involved seems to also tend to be lower for those without kyphosis comared to those that do, though the number of top vertebae operated on seems to be greater for those without kyphosis.
+
+```{r 3a, eval = T, echo = F,warning=F}
+
+data(kyphosis,package="rpart")
+A3 <- kyphosis
+
+
+ggplot(A3)+
+  geom_jitter(aes(x = Age,y = Kyphosis,colour = Kyphosis),alpha = .5)+
+  geom_rug(aes(x = Age, colour = Kyphosis),alpha = .5)+
+  scale_colour_manual(breaks = c("absent","present"),
+                    values = c("red","blue"),
+                    name = "Kyphosis Diagnosis")+
+  labs(caption = "Figure 5.0",title = "Kyphosis Vs Age")
+
+ggplot(A3)+
+  geom_jitter(aes(x = Number,y = Kyphosis,colour = Kyphosis),alpha = .5)+
+  geom_rug(aes(x = Number, colour = Kyphosis),alpha = .5)+
+  scale_colour_manual(breaks = c("absent","present"),
+                    values = c("red","blue"),
+                    name = "Kyphosis Diagnosis")+
+  labs(caption = "Figure 6.0",title = "Kyphosis Vs Number")
+
+ggplot(A3)+
+  geom_jitter(aes(x = Start,y = Kyphosis,colour = Kyphosis),alpha = .5)+
+  geom_rug(aes(x = Start, colour = Kyphosis),alpha = .5)+
+  scale_colour_manual(breaks = c("absent","present"),
+                    values = c("red","blue"),
+                    name = "Kyphosis Diagnosis")+
+  labs(caption = "Figure 7.0",title = "Kyphosis Vs Start")
+    
+
+```
+
+###3b
+
+The first thing we can do is create a logistic regression where `Kyphosis` depends on `Age`, `Number`, and `Start`.  
+
+The following summary outlines the fitted model:
+
+```{r 3b, eval = T, echo = F,warning=F}
+
+q3a_glm<-glm(Kyphosis~.,family=binomial, data=A3)
+
+sumary(q3a_glm)
+
+
+```
+
+To gain further insight, we can visualize the residuals vs the fitted values.  As default, the calculated residuals of a logistic regression are deviance residuals. `Figure 8.0` displays the residuals vs fitted values, notice that this plot, is not very helpful. The residual can take only two values given a fixed linear predictor. In this case, the upper line in the plot corresponds to positive diagnosis and the lower, negative.
+
+```{r 3b2, eval = T, echo = F,warning=F}
+
+B3 <- mutate(A3, residuals=residuals(q3a_glm), linpred=predict(q3a_glm))
+
+ggplot(B3)+
+  geom_point(aes(x = linpred,y = residuals,colour= factor(Kyphosis)))+
+  ggtitle("Deviance Residuals Vs Fitted Values") +
+  labs(caption = "Figure 8.0 | Source: John M. Chambers and Trevor J. Hastie eds. (1992)",
+       subtitle = "Non-Binned",
+       x = "Fitted Values",
+       y = "Deviance Residuals")+
+  scale_colour_manual(breaks = c("absent","present"),
+                    values = c("red","blue"),
+                    name = "Kyphosis Diagnosis")+
+  theme_light()+
+  theme(legend.position = "bottom",
+        legend.background = element_rect(fill="white"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+               
+```
+
+
+###3c
+
+Produce a binned residual plot as described in the text. You will need to select an appropriate amount of binning. Comment on the plot.
+
+To add more values to our plots we can bin the residuals. Figure 9.0 plots the binned residuals using 10 bins.  Though the number of points is fairly sparse, it seems there is generally non-equal variance.  Homoscedacitiy is not required therefore this is not a concern.
+
+```{r 3b3, eval = T, echo = F,warning=F}
+
+C3 <- group_by(B3, cut(linpred, breaks=unique(quantile(linpred,(1:10)/11))))
+
+diaC3 <- summarise(C3, residuals=mean(residuals), linpred=mean(linpred))
+plot(residuals ~ linpred, diaC3, xlab="linear predictor",main = "Figure 9.0 Binned Residuals")
+
+```
+
+
+To add more values to our plots we can bin the residuals.
+
+###3d
+
+Now we want to inspect residuals and the relationship with `Start`.  Figure 10 plots residuals vs `Start` it is most important to note the points of the most extreme sizes i.e small and large. Note:We take square roots because the SD is proportional to the square root of the sample size so this gives the appropriate visual impression.  In particular most observations had a large number of start top vertebae and the observaitons with more extreme residuals occur with low frequency.
+
+```{r , eval = T, echo = F,warning=F}
+
+group_by(B3, Start) %>% summarise(residuals=mean(residuals), count=n ()) %>% ggplot(aes(x=Start, y=residuals, size=sqrt(count))) + geom_point()+labs(caption = "Figure 10.0", title = "Start vs Residuals",subtitle ="Size controlled by frequency of observation")
+
+```
+
+###3e
+
+To further analyze the model residuals we can examine a qqplot.  The residuals need not be normal, so little information can be further gathered from this plot, instead we will need to observe the leverage.
+
+Note: the largest residuals will arise when there was a positive classification with low predicted probability. 
+
+```{r , eval = T, echo = F,warning=F}
+
+qqnorm(residuals(q3a_glm),main = "Figure 11.0 - QQ Plot")
+
+
+```
+
+###3f
+
+As previously mentioned, to gain further insight into our model we need to observe the leverage of our observations.  Using the `halfnorm` function in R, we can visualize the points with greatest leverage.
+
+In our case, there were 2 observations with particularly large leverage.  They are labelled in the following plot.  Futher exploring these points leads us to notice that they correspond to the most cases with the most extreme number of vertebrae involved.  These points while they have the largest leverage do not seem to be extreme enough to consider ommision.
+
+```{r , eval = T, echo = F,warning=F}
+
+halfnorm(hatvalues(q3a_glm),main = "Figure 11.0 - Investigating Leverage")
+
+```
+
+
+###3g
+
+The following plot displays observed proportions vs predicted probability.  Although we can see there is some variation, there is no consistent deviation from what is expected and the line passes through most of these intervals which suggests that the variation from the expected is within our comfort level.
+```{r , eval = T, echo = F,warning=F}
+
+wcgsm <- na.omit(B3)
+wcgsm <- mutate(wcgsm, predprob=predict(q3a_glm,type="response"))
+gdf <- group_by(wcgsm, cut(linpred, breaks=unique(quantile(linpred,(1:8)/9))))
+#hldf <- summarise(gdf, y=sum(y), ppred=mean(predprob), count=n())
+
+
+```
+
+###3h
+
+With our model complete, we can classify out observations and assess the model accuracy.  The following output displays a confusion matrix of predicted vs actual classes.  In our case, we were able to predict the absent class well however we were less successful in the positive class.  When the patient had Kyphosis, we were only able to predict with 41% accuracy.  This could be adjusted by adjusting the prediction threshold downward allowing for more missclassified absent observations.
+
+To improve our model an additional test set to access the unbiased generalization error could provide a better estimate of the true error.
+
+```{r , eval = T, echo = F,warning=F}
+
+wcgsm <- na.omit(B3)
+wcgsm <- mutate(wcgsm, predprob=predict(q3a_glm,type="response"))
+
+wcgsm <- mutate(wcgsm, predout=ifelse(predprob < 0.1, "no", "yes"))
+xtabs( ~ Kyphosis + predout, wcgsm)
+
+
+
+```
+
+
+
+  

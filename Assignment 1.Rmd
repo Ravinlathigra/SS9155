@@ -1,0 +1,592 @@
+---
+title: "Assignment 1 - SS9155 - 250620601"
+author: "Ravin Lathigra"
+date: '2019-01-14'
+output:
+  pdf_document:
+    latex_engine: xelatex
+always_allow_html: yes
+
+---
+
+<style>
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=100)
+```
+
+---
+
+##R Packages & Libraries
+```{r, eval=TRUE, echo = TRUE, warning = FALSE, message=FALSE}
+library(corrplot)    #Visualize Correlation between variables
+library(kableExtra)  #Style tables
+library(tidyverse)   #contains ggplot2,dplyr,tidyr, readr,purr,tibble,stringr,forcats
+library(formatR)     #Improve readability of code
+library(e1071)       #Functions for latent class analysis, Fourier transform ect.
+library(VIM)         #Knn
+library(ggfortify)   #Add on to ggplot2 to allow for more plot types
+library(Rtsne)       #Dimension reduction classification
+library(caret)       #streamlined model development
+library(RColorBrewer)#Control colours of visualizations 
+library(GGally)      #Contains ggpairs plots
+library(lmtest)      #Test for linear assumptions
+library(MASS)
+library(faraway)
+library(lasso2)
+```
+
+---
+
+##Understanding the Data
+
+The data used throughout the following analysis was gathered from the `Faraway` package, though sourced from **Andrews DF and Herzberg AM (1985)**.  The data contains patient information for 97 men diagnosed with prostate cancer who were due to undergo a prostatectomy.  Patient details include 9 variables namely `log(cancer volume)`, `log(prostate weight)`, `age`, `log(benign prostate hyperplasia amaunt)`, `seminal vesicle invasion`, `log(capsular penetration)`, `Gleason score`, `presentage Gleason scores 4 or 5`, & `log(prostate specific antigen)` which for the purposes of the investigation were encoded as `lcavol`, `lweight`, `age`, `lbph`, `svi`, `lcp`,`gleason`, `pgg45`, & `lpsa` respectively.
+
+The goal of the investigation is to explore the relationship between `lpsa` and the other predictors included in the `prostate` dataset.  After developing an understanding of the relationships among predictors, a regression model can be developed to predict `lpsa`. It is important that before the analysis begins that the structure of the data is understood.  The following r output displays the structure of the prostate data.  It should be noted that `svi` and `gleason` were origionally classified as numeric, though it is more appropriate to treat them as factor variables.  `svi` is a binary indicator of whether or not the cancer has spread to the seminal vesicles, `gleason` is a discrete risk measure assigned to a biopsy of affected tissue.
+
+```{r import, eval = TRUE, echo = FALSE}
+
+data <- prostate
+
+data <- data %>%
+          mutate(svi = factor(svi)) %>%
+          mutate(gleason = factor(gleason))
+
+str(data)
+```
+
+###Missing Data
+
+Once the structure of the data is understood, the completness of the data can be assessed.  *Missing Prostate Data* shows whether data is missing or available for each observation across all predictors.  Missing data is highlighted in \textcolor{purple}{purple}, though in this case, there is no missing data across any predictors.
+
+```{r missingdata, echo = FALSE, eval = TRUE}
+
+plot_missing <- function(data_in,title = NULL){
+
+#create temporary data.frame that converts all data into binary output.  0's represent missing data and 1's represent data !=  NA.
+  
+  temp_df <- as.data.frame(ifelse(is.na(data_in),0,1))
+  temp_df <- temp_df[,order(colSums(temp_df))]
+  data_temp <- expand.grid(list(x = 1: nrow(temp_df),y = colnames(temp_df)))
+  data_temp$m <- as.vector(as.matrix(temp_df))
+  data_temp <- data.frame(x = unlist(data_temp$x), y = unlist(data_temp$y), m = unlist(data_temp$m))
+  
+#This creates a tile plot that outputs the frequency missing and non-missing data within the targeted data.  
+  ggplot(data_temp)+
+    geom_tile(aes(x=x,y=y,fill= factor(m)))+
+    scale_fill_manual(values= c("lightgrey","purple"),name = "Missing\n(0 = Yes, 1= No)")+
+    theme_light()+
+    xlab("") +
+    ggtitle(title)+
+    coord_flip()+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+}
+
+plot_missing_prostate <- plot_missing(data, "Missing Prostate Data")
+print(plot_missing_prostate)
+```
+
+##Data Exploration
+
+**Summary of missing and existing observations by variable**
+
+The following plots compare and contrast the distributions of each predictor using histograms.  To help explore underlying groupings within the data, aesthetics can be added to the plots.  Adding aesthetics allows for groups to be directly compared.  There are 2 factor variables present in the data `svi` and `gleason`.  
+
+When `svi` is used as an aesthetic, \textcolor{blue}{blue} represents a lack of invasion while \textcolor{red}{red} indicates invasion.
+
+Similarly, when `gleason` is an aesthetic, \textcolor{blue}{blue}, \textcolor{red}{red},\textcolor{yellow}{yellow} and \textcolor{green}{green} represents gleason scores of 6,7,8 and 9 respectively.
+
+The benefit to these visualization are they capture both discrete and continuous predictors however, since the proportion of data between the groups is not equivalent it is difficult to directly compare the distrubtions. It is worth noting, that there is an imbalance of groups, which may lead to sparse representation.
+
+
+```{r, eval = TRUE, echo = FALSE}
+long_prostate <- prostate %>%
+                  gather()
+
+long_prostate_svi_0 <- prostate %>%
+                         filter(svi == 0) %>%
+                         gather() %>%
+                         mutate(svi = 0)
+
+long_prostate_svi_1 <- prostate %>%
+                         filter(svi == 1) %>%
+                         gather() %>%
+                         mutate(svi = 1)
+
+long_prostate_gs_6 <- prostate %>%
+                         filter(gleason == 6) %>%
+                         gather() %>%
+                         mutate(gleason = 6)
+
+long_prostate_gs_7 <- prostate %>%
+                         filter(gleason == 7) %>%
+                         gather() %>%
+                         mutate(gleason = 7)
+
+long_prostate_gs_8 <- prostate %>%
+                         filter(gleason == 8) %>%
+                         gather() %>%
+                         mutate(gleason = 8)
+
+long_prostate_gs_9 <- prostate %>%
+                         filter(gleason == 9) %>%
+                         gather() %>%
+                         mutate(gleason = 9)
+
+
+
+long_prostate_svi <- rbind(long_prostate_svi_0,long_prostate_svi_1)
+long_prostate_gs <- rbind(long_prostate_gs_6,long_prostate_gs_7,long_prostate_gs_8,long_prostate_gs_9)
+
+ggplot(long_prostate_svi) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(aes(x = value,fill = factor(svi)), alpha = 0.4)+
+  scale_fill_manual(values=c("blue","red")) +
+  guides(fill=FALSE)+
+  ggtitle("Histogram of Prostate Predictors|SVI Aesthetic")
+
+ggplot(long_prostate_gs) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram(aes(x = value,fill = factor(gleason)), alpha = 0.4)+
+  scale_fill_manual(values=c("blue","red","yellow","green")) +
+  guides(fill=FALSE)+
+  ggtitle("Histogram of Prostate Predictors|Gleason Score Aesthetic")
+```
+
+We can improve the comparisons that can be made from the data by estimating probability density functions.  To promote smooth PDFs, a gaussian kernal is used.  The plot *Gaussian Smoothed Probability Densitiy Estimates|SVI Aesthetic* gives insight that there is a significant degree of differentiation within the data when comparing seminal vesical invation. If instead, the data is grouped by `gleason` there is a lesser degree of seperation between the groups though there appears to be a relationship between `gleason` and `lpsa`.  In particular, as gleason increases, we expect to see an increase in `lcavol` and a decrease in the variance of `lpsa`.  This is inline with medical intuition though it is a good way to confirm that our data is reasonable.
+
+
+```{r, eval = TRUE, echo = FALSE, warning=F}
+ggplot(long_prostate_svi) +
+  facet_wrap(~key, scales = "free") +
+  geom_density(aes(x = value, fill = factor(svi)),alpha = 0.4)+
+  scale_fill_manual(values=c("blue","red")) +
+  guides(fill=FALSE)+
+  ggtitle("Gaussian Smoothed Probability Densitiy Estimates|SVI Aesthetic")
+
+
+suppressWarnings(ggplot(long_prostate_gs) +
+  facet_wrap(~key, scales = "free") +
+  geom_density(aes(x = value, fill = factor(gleason)),alpha = 0.4)+
+  scale_fill_manual(values=c("blue","red","yellow","green")) +
+  guides(fill=FALSE)+
+  ggtitle("Gaussian Smoothed Probability Densitiy Estimates|Gleason Score Aesthetic"))
+
+```
+
+
+For further exploration into the data, pairwise comparisons of the data can be visualized.  The plot *Pairwise Plot | Prostate Data* has 3 important comparisons displayed.  As the estimated PDFs sugggested, data is split by `svi` to allow for more detailed comparisons to be made. 
+
++ Lower: between predictor scatter plot for continuous data and boxplots for factor predictors.  Further enhancements include a loess smoother applied to the scatter plot to capture relationships among predictors.
+
++ Diagonal: Gaussian Smoothed Estimated PDFs for continuous variables and frequency plot for factor variables.
+
++ Upper: Between predictor correlation by svi group as well as ungrouped correlation.
+
+Perhaps the most significant inferences that can be made from is a moderate positive correlation between `lcavol` and `lpsa` which provides additional support for previous observations regarding the data.  Additionally, it suggests that as gleason scores increase the `lpsa` may rise and variance decreases.
+
+
+```{r pairs, echo = FALSE, eval = TRUE}
+
+
+pairwise_plot<- ggpairs(data %>% dplyr::select(-svi),progress = ggmatrix_progress(clear = F),
+                        aes(colour = factor(data$svi)),
+                        diag = list(discrete = wrap("barDiag", alpha = 0.4),
+                                    combo = wrap("barDiag", alpha = 0.4),
+                                    continuous = wrap("densityDiag", alpha = 0.4)),
+                        lower = list(combo = wrap("box_no_facet", alpha = 0.4),
+                                    continuous = wrap("smooth_loess", alpha = 0.4)),
+                        upper = list(combo = "blank",continuous = wrap("cor",size = 3)))+
+                ggtitle("Pairwise Plot | Prostate Data")
+
+
+
+for(i in 1:pairwise_plot$nrow) {
+  for(j in 1:pairwise_plot$ncol){
+    pairwise_plot[i,j] <- pairwise_plot[i,j] + 
+        scale_fill_manual(breaks = c(0, 1),
+                          values=c("blue", "red"))+
+        scale_colour_manual(breaks = c(0, 1),
+                          values=c("blue", "red")) +
+         theme(legend.title=element_blank())
+        
+  }
+}
+
+
+suppressWarnings(print(pairwise_plot, progress = F))
+
+```
+
+To better visualize the correlations among the predictors a corrplot can be used.  The following corrplot, simplifies the correlations presented in the pairwise plot.  If correlations among predictors- particularly predictors that are not `lpsa`- are large collinearity may present in the model.  
+
+From a preProcessing perspective, the feature space of the dataset can be reduced using a correlation reduction algorithm. The following algorithm is used to reduce the dimensions of the data by removing variables with the most correlated relationships with the other variables.
+
+1. Calculate Correlation Matrix of the variables
+2. Determine the 2 predictors with the greatest absolute pariwise correlation namely A & B.
+3. Determine the average correlation between A and the other variables.  Repeat for B.
+4. If avg correlation for A > B then remove A.  Otherwise remove B.
+5. Repeat until theire are no pairwise correlations greater than 0.75.
+
+The corrplot suggests that there are predictors that have a moderate degree of correlation, though they did not meet the threshold required to be removed from the model.
+
+
+```{r, echo= F, eval = T}
+
+numeric_data <- data %>%
+                  select_if(function(x) {is.numeric(x)})
+data_correlation <- cor(numeric_data)
+
+corrplot(data_correlation,mar=c(0,0,2,0), method = "square", type= "lower",diag = FALSE, number.cex = .8,tl.cex = .8, order = "hclust",tl.srt=45, addCoef.col = "black", insig = "blank",title = "Between predictor correlation") 
+
+```
+
+
+Further preProcessing that can be applied to the data can be easily carried out using the `caret` package.
+
+The **caret** package offers the function `preProcess` which allows for the following:
+
+- centering data
+- scaling  data
+- Remove predictors with near zero or zero variance
+- Remove predictors with large parwise correlation
+
+The only preProcessing that was applicable to the prostate data set was 7 predictors centered and scaled, more specifically the non-factor predictors.
+
+```{r, echo =  F, eval = T, warning=F}
+processed_data <- preProcess(data, 
+            method = c("center","scale","zv","nzv","corr"),
+            cutoff=0.75
+            )
+
+process_data <- predict(processed_data,data)
+
+removed_pred <- data.frame(subset(names(data), !(names(data) %in% unique(names(process_data)))))
+colnames(removed_pred) = "Predictor"
+
+```
+
+## High Dimension Visualization
+
+### Principle Component Analysis
+Principle component analysis is a dimenstion reduction technique that attempts to capture the maximum amount of variance within the predictors, i.e ignoring the response variable, using orthagonal linear combinations of the predictors  Using the first 2 principle components (linear combinations) only 65% of the variation is captured therefore, there is not enough preservation of data to see if there is high dimension seperation within the data.
+
+```{r, eval = TRUE, echo = FALSE}
+
+summary(prcomp(process_data %>% select_if(function(x) {is.numeric(x)})))
+
+```
+
+### t-Distributed Stochastic Neighbor Embedding
+
+PCA can be an effective dimension reduction technique which can subsequently be used to identify clusters, however this method aims to capture variation among the feature space.  As noted, there was not enough variance captured in the first 2 principle components to appropriately visualize the data in 2 dimension.  Instead we can use a highly regarded method known as t-Distributed Stochastic Neighbor Embedding (tSNE). This approach says that if there exists relationships amongst the varaiables in high dimensions then we can display them in lower dimensions. This method offers advantages over pca particularly if there is only a small amount of variation explained by the first two PC's, as it looks to preserve relationships **not** maximize variance. With this, we can take our data and identify the relationships in high dimensions and display them in 2.  If there is evidence of seperation, it would be interesting to determine what factors are most responsible for creating distinct grouping in the data.
+
+tSNE does not produce a stable output i.e each iteration through thte data, the transformation of the observations can change.  The parameter in tSNE that can be considered a **tuning** parameter is called perplexity.  There is no way to empirically estimate this parameter, but since tSNE is simply a techniqe used to express the relationships in high dimension in lower dimensions, we can iterate through the data numerous times using tSNE considering serveral values for the tuning parameter, perplexity, such that we minimize the Kullback-Leibler divergence.  For our purposes our parameter space for perplexity is 5,10,15, and 20 and we conduct tSNE 5 times, considering a maximum of 5000 iterations for each tSNE transformation to ensure that our KL divergence converges.
+
+The following plot illstrate the *best* tSNE representation i.e lowest KL-Divergence for each of the considered perplexities: 
+
+```{r, echo = F, eval = T}
+set.seed(54)
+
+max_kl_div_5  <- 100
+max_kl_div_30 <- 100
+max_kl_div_40 <- 100
+max_kl_div_50 <- 100
+
+for (i in 1:5) {
+iter = i
+  Rtsne5 <- Rtsne(process_data, dims = 2, initial_dims = ncol(process_data), perplexity = 5, theta = 0,
+       max_iter = 1000)
+  
+  Rtsne30 <- Rtsne(process_data, dims = 2, initial_dims = ncol(process_data), perplexity =10, theta = 0,
+       max_iter = 1000)
+  
+  Rtsne40 <- Rtsne(process_data, dims = 2, initial_dims = ncol(process_data), perplexity = 15, theta = 0,
+       max_iter = 1000)
+  
+  Rtsne50 <- Rtsne(process_data, dims = 2, initial_dims = ncol(process_data), perplexity = 20, theta = 0,
+       max_iter = 1000)
+  
+  
+  
+  Rtsne5_kld <-Rtsne5$itercosts[length(Rtsne5$itercosts)]
+  Rtsne30_kld <-Rtsne5$itercosts[length(Rtsne30$itercosts)]
+  Rtsne40_kld <-Rtsne5$itercosts[length(Rtsne40$itercosts)]
+  Rtsne50_kld <-Rtsne5$itercosts[length(Rtsne50$itercosts)]
+
+    if (Rtsne5_kld>max_kl_div_5) {
+      } else {
+        min_kld_5 = Rtsne5_kld
+        Best_tsne_5 = Rtsne5
+      }
+    
+    
+    if (Rtsne30_kld>max_kl_div_30) {
+      } else{
+        min_kld_30 = Rtsne30_kld
+        Best_tsne_30 = Rtsne30
+      }
+    
+    
+    if (Rtsne40_kld>max_kl_div_40) {
+      } else{
+        min_kld_40 = Rtsne40_kld
+        Best_tsne_40 = Rtsne40
+      }
+    
+    
+    if (Rtsne50_kld>max_kl_div_50) {
+      } else{
+        min_kld_50 = Rtsne50_kld
+        Best_tsne_50 = Rtsne50
+      }
+    
+
+}
+
+
+process_Rtsne50 <- data.frame(Best_tsne_50$Y)%>% mutate(lpsa = data$lpsa) %>% mutate(gleason = data$gleason) %>% mutate(svi = data$svi)
+
+
+ggplot() +
+  geom_point(data=  process_Rtsne50, aes(x = X1, y=X2, colour = svi), show.legend = TRUE)+
+  geom_segment(data = process_Rtsne50 %>%
+  filter(svi ==1) %>%
+  filter(X2  <0 & X1 <0), aes( x = X1, xend = X1, y = -Inf, yend = X2  ),colour = "navyblue", linetype = "dotted")+
+  geom_segment(data = process_Rtsne50 %>%
+  filter(svi ==1) %>%
+  filter(X2  <0 & X1 <0), aes( x = -Inf, xend = X1, y = X2, yend = X2  ), colour = "navyblue", linetype = "dotted")+
+  ggtitle("RtSNE| Perplexity:20 | Max Interations:5000")+
+  theme_grey()
+
+
+```
+
+
+For the purposes of regression analysis, the ability to seperate high dimensional data in lower dimension is not essential though it is interesting.  It also highlights a few interesting obvservations.  In particular, the dotted lines highlight a `svi` of group 1 i.e seminal vesicle invasion.  It would not be surprising that there is a degree of error when dealing with biological information or human gathered data.  For the purposes of the investigation, all datapoints are considered though if the data could be reviewed with the initial publishers some points -like the highlighted one- could be further validated. 
+
+## Data Splitting
+
+Given the limited data, conservation of data is essential which suggests rather than using training, validation and test sets we should use only a training and test set.  To ensure that we are appropriately estimating the generalization ("test") error we use 5 times 10 fold cross-validation.  Furthermore, the data partitioned into 70/30 splits for the training and test respectively.
+
+```{r, echo = F, eval = T}
+
+reg_train_rows <-  createDataPartition(process_data$svi,p=.7, list = FALSE)
+
+reg_train <- process_data[reg_train_rows,] 
+reg_test<- process_data[-reg_train_rows,]
+
+train_control <- trainControl(method="repeatedcv", number=10, repeats = 5, savePredictions = T,verboseIter = FALSE)
+
+```
+
+## Model Development
+
+For model development, we consider the following candidate models:
+
++ linear model
++ Stepwise Linear Model
+
+###Linear Model
+
+```{r lm, echo = F, eval = T,warning=F}
+
+caret_lm <- train(lpsa ~., data = reg_train,method = "lm",trControl = train_control,metric = "RMSE")
+
+summary(caret_lm$finalModel)
+
+plot(caret_lm$finalModel, which = c(1:2,4), col = "dodgerblue")
+
+bptest(caret_lm$finalModel)
+shapiro.test(resid(caret_lm$finalModel))
+
+```
+
+**Linearity** - Inspecting the plot "Residuals Vs Fitted" has a trend line that helps illustrate that there is a  no clear tend between the fitted values and residuals. Furthermore, the residuals generally exhibit zero mean suggesting that a linear model may be appropriate.
+
+**Equal Variance** - Inspecting the plot "Residuals Vs Fitted" we see there is generally constant variance and no obvious trends suggesting a linear model may be appropriate.  A BP test can confirm if this assumption is not violated.
+
+**Normality assumption** - Inspecting the plot "Normal Q-Q" we that the standardized residuals moderately correspond to the theoretical quantiles of a normal distribution.  At the extremes of the plot, the observed and theoretical quantiles deviate though additional testing via Shapiro test can indicate if the normality assumption is violated.
+
+**Points of Interest** - Also included is a plot of Cook's distance which is a good indicator of point that may have high influence or require further investigation.  When dealing with biological experiments there can be anomolies in the observations which arise for a number of reasons including, the health of a cell and human error.  Using a cooks distance threshold of 4 divided by the number of observations in the data, we can next look to remove observations and reassess linear assumptions if any are violated.
+
+
+**BP Test**:  p-value >> 5% significance level this suggests that there is no evidence against the **equal variance assumption** for this model.
+
+
+**Shapiro Test**:  p-value >> 5% significance level this suggests that there is no evidence against the **normality assumption** for this model.  
+
+
+###Linear Model | Remove Influential Observations
+
+```{r influential, echo = F, eval = T, warning=FALSE}
+remove_influential <- na.omit(reg_train[cooks.distance(caret_lm$finalModel)<=4/nrow(reg_train),])
+
+caret_lm_inf <- train(lpsa ~., data = remove_influential,method = "lm",trControl = train_control,metric = "RMSE")
+
+plot(caret_lm_inf$finalModel, which = c(1:2,4), col = "dodgerblue")
+bptest(caret_lm_inf$finalModel)
+shapiro.test(resid(caret_lm_inf$finalModel))
+
+summary(caret_lm_inf$finalModel)
+
+```
+
+
+**Linearity** - Inspecting the plot "Residuals Vs Fitted" has a trend line that helps illustrate that there is a  no clear tend between the fitted values and residuals. Furthermore, the residuals generally exhibit zero mean suggesting that a linear model may be appropriate.
+
+**Equal Variance** - Inspecting the plot "Residuals Vs Fitted" we see there is generally constant variance and no obvious trends suggesting a linear model may be appropriate.  A BP test can confirm if this assumption is not violated.
+
+**Normality assumption** - Inspecting the plot "Normal Q-Q" we that the standardized residuals moderately correspond to the theoretical quantiles of a normal distribution.  At the extremes of the plot, the observed and theoretical quantiles deviate though additional testing via Shapiro test can indicate if the normality assumption is violated.
+
+**Points of Interest** - Also included is a plot of Cook's distance which is a good indicator of point that may have high influence or require further investigation.  When dealing with biological experiments there can be anomolies in the observations which arise for a number of reasons including, the health of a cell and human error. 
+
+**BP Test**:  p-value > 5% significance level this suggests that there is marginal evidence against the **equal variance assumption** for this model.  Note that at a 5% significance level we fail to reject the null hypothesis, if it were to increase to 10% there would be evidence against the assumption.
+
+
+**Shapiro Test**:  p-value >> 5% significance level this suggests that there is no evidence against the **normality assumption* for this model.  
+
+
+
+###Stepwise Linear Model
+
+```{r, echo = F, eval = T}
+
+caret_steplm <- train(lpsa ~., data = reg_train,method = "lmStepAIC",trControl = train_control,metric = "RMSE", trace = F)
+
+
+plot(caret_steplm$finalModel, which = c(1:2,4), col= "dodgerblue")
+
+
+bptest(caret_steplm$finalModel)
+shapiro.test(resid(caret_steplm$finalModel))
+
+summary(caret_steplm$finalModel)
+
+```
+
+**Linearity** - Inspecting the plot "Residuals Vs Fitted" has a trend line that helps illustrate that there is a  no clear tend between the fitted values and residuals. Furthermore, the residuals generally exhibit zero mean suggesting that a linear model may be appropriate.
+
+**Equal Variance** - Inspecting the plot "Residuals Vs Fitted" we see there is generally constant variance and no obvious trends suggesting a linear model may be appropriate.  A BP test can confirm if this assumption is not violated.
+
+**Normality assumption** - Inspecting the plot "Normal Q-Q" we that the standardized residuals moderately correspond to the theoretical quantiles of a normal distribution.  At the extremes of the plot, the observed and theoretical quantiles deviate though additional testing via Shapiro test can indicate if the normality assumption is violated.
+
+**Points of Interest** - Also included is a plot of Cook's distance which is a good indicator of point that may have high influence or require further investigation.  When dealing with biological experiments there can be anomolies in the observations which arise for a number of reasons including, the health of a cell and human error. 
+
+**BP Test**:  p-value >> 5% significance level this suggests that there is no evidence against the **equal variance assumption** for this model. 
+
+
+**Shapiro Test**:  p-value >> 5% significance level this suggests that there is no evidence against the **normality assumption* for this model.  
+
+##Significance of Model Predictors
+```{r, echo = F, eval = T}
+
+
+anova(caret_steplm$finalModel,caret_lm$finalModel)
+
+
+```
+
+Considering the following null and alternative hypothesis and a 5% significance level
+
+*Null : age = lbph = lcp = gleason8 = gleason9 = ppg45*
+
+*Alt  : At least one of age,lbph,lcp,gleason8,gleason9,ppg45 is non-zero.*
+
+Using anova to assess the importance of the terms we fail to reject the null hyptothesis.
+
+Rather than just considering the reduced stepwise model as a candidate model, all 3 models i.e lm, lm with influential values removed, and stepwise lm are considered and will be used to determine an estimate of the generalization error using repeated cross validation.  From there, the model that optimizes the trade-off between predictive power and low variance will be the selected model.
+
+##Model Selection
+
+```{r, echo = F, eval = T}
+
+
+valid <-transpose(data.frame(caret_lm$results["RMSE"],
+           caret_lm_inf$results["RMSE"],
+           caret_steplm$results["RMSE"]))
+
+rownames(valid) = c("Lm","Lm Remove Inf","Stepwise Lm")
+colnames(valid) = "RMSE"
+
+t1 <- caret_lm$resample %>% mutate(model = "lm")
+t2 <- caret_lm_inf$resample %>% mutate(model = "lm rm inf")
+t3 <- caret_steplm$resample %>% mutate(model = "Step lm")
+
+t <- rbind(t1,t2,t3)
+valid <- rownames_to_column(valid,"Model")
+
+t2<-t %>%
+  group_by(model) %>%
+  summarise(sd= sd(RMSE),avg = mean(RMSE))
+
+
+kable(valid %>% arrange(RMSE),booktabs = TRUE,
+      caption = "Model Selection", 
+      align = rep("c", ncol(valid))) %>%
+  kable_styling(position = "center",latex_options = "hold_position") %>%
+  row_spec(3, bold = "T", background = "#F7FBFF")
+
+
+#ggplot(t)+
+ # geom_boxplot(aes(x = model,y=RMSE, fill= factor(model)))+
+  #ggtitle("Within Fold CV RMSE")+
+  #scale_fill_manual(breaks = c("lm","lm rm inf","Step lm"),
+   #                 values = c("grey","grey","lightblue"),
+  #                  name = "Candidate Models")+
+  #theme_bw()
+
+ggplot(t2)+
+  geom_point(aes(x = model,y=avg, colour= factor(model)))+
+  geom_errorbar(aes(x = model, ymin = avg-sd,ymax = avg+sd, colour = factor(model)))+
+  ggtitle("Within Fold CV RMSE")+
+  scale_colour_manual(breaks = c("lm","lm rm inf","Step lm"),
+                    values = c("black","black","darkblue"),
+                    name = "Candidate Models")+
+  guides(colour = FALSE)+
+  ylab("RMSE")+
+  theme_grey()
+
+caret_steplm$finalModel
+
+```
+
+On the training/validation set, the estimate of the generalization error can be seen in the table **Model Selection**.  While the first model i.e lm with influential points removed had the lowest RMSE, it was close to violating the equal variance assumption and therefore the most appropriate model is either the full linear model or Stepwise model.  
+
+To assist in choosing between these two remaining models, the plot **Within Fold CV RMSE** illustrates a plot with error bars (1 standard deviation) for candidate models with respect to the RMSE across all folds.  Notice that the standard deviation for the Stepwise Linear model is lower and it is less complex, therefore the most appropriate model is the stepwise linear model.
+
+$${Selected }: \hat{lpsa} = \beta_{0}+\hat{\beta}_{lcavol}x_{i,1}+\hat{\beta}_{lweight}x_{i,2}+\hat{\beta}_{svi1}x_{i,3}+\hat{\beta}_{gleason7}x_{i,4}$$
+
+The predictors relied upon in the model are rather intuitive i.e it makes perfect sense that predictors for `lpsa` are all measures of cancer size, activity of cancer and risk measure from biopsy.  It seems as though the presence of seminal vesicle invasion contributes signifcantly to the 'lpsa' as does the cancer volume.
+
+##Performance Evaluation
+
+To generate an unbiased estimate of the generalization error, the selected Stepwise function can be applied to the held out test set.  The table **Generalization Error** illustrates the unbiased estimate of the generalization error.
+```{r perform, echo = F, eval = T}
+
+lm_step_test<- predict(caret_steplm,newdata = reg_test)
+
+lm_step_results <- postResample(pred = lm_step_test,obs = reg_test$lpsa)["RMSE"]
+
+test_results <- data.frame(lm_step_results) %>%
+                    rownames_to_column("Metric") 
+
+colnames(test_results) = c("Metric","Performance")
+
+kable(test_results,booktabs = TRUE,
+      caption = "Generalization Error", 
+      align = rep("c", ncol(test_results))) %>%
+  kable_styling(position = "center",latex_options = "hold_position")
+
+
+```

@@ -1,0 +1,718 @@
+---
+title: "SS9155 - Assignment 3 - 250620601"
+author: "Ravin Lathigra"
+date: '2019-01-28'
+output:
+  pdf_document:
+    latex_engine: xelatex
+always_allow_html: yes
+---
+
+<style>
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=100)
+```
+
+---
+
+##R Packages & Libraries
+```{r, eval=TRUE, echo = TRUE, warning = FALSE, message=FALSE}
+library(corrplot)    #Visualize Correlation between variables
+library(kableExtra)  #Style tables
+library(tidyverse)   #contains ggplot2,dplyr,tidyr, readr,purr,tibble,stringr,forcats
+library(formatR)     #Improve readability of code
+library(e1071)       #Functions for latent class analysis, Fourier transform ect.
+library(VIM)         #Knn
+library(ggfortify)   #Add on to ggplot2 to allow for more plot types
+library(Rtsne)       #Dimension reduction classification
+library(caret)       #streamlined model development
+library(RColorBrewer)#Control colours of visualizations 
+library(GGally)      #Contains ggpairs plots
+library(lmtest)      #Test for linear assumptions
+library(MASS)
+library(faraway)
+
+```
+
+```{r}
+data("esoph")
+
+c3_q1 <- esoph
+
+str(c3_q1)
+summary(c3_q1)
+
+```
+
+###Chapter 3 | Question 1
+
+Using data from the case-control study of oesophageal cancer in ille-et-Vilaine, France we will explore the relationships between the available predictors and the presence of oesophageal cancer.  The data is sourced from the `datasets` package more specifically the `esoph` dataset.  
+
+Age Group [agegp]
+Alcohol Consumption [alcgp]
+Tobacco Consumption [tobgp]
+Number of Cases [ncases]
+Number of controls [ncontrols] (DELETE BEFORE KNITTING)
+
+
+
+*(a) Plot the proportion of cases against each predictor using the size of the point to indicate the number of subject as seen in Figure 2.7. Comment on the rela- tionships seen in the plots.*
+
+**How does age relate to the presence of cancer?**
+
+```{r c3q1a1, eval = T, echo = F,warning=F}
+
+
+####Proportion Vs Age Group
+c3_q1a<- c3_q1 %>%
+  group_by(agegp) %>%
+  summarise(ncases = sum(ncases),
+            ncontrol = sum(ncontrols),
+            prop = ncases/ncontrol)
+
+ggplot(c3_q1a)+ 
+  geom_point(aes(x = agegp, y = ncases/(ncases+ncontrol),size = ncases + ncontrol), show.legend = F)+
+  geom_text(aes(x = agegp, y = (ncases/(ncases+ncontrol))+.025, label = paste0(ncases + ncontrol, " subjects")),size = 2.5,show.legend = F)+
+  ggtitle("Proportion of Cases vs Age Group") +
+  labs(caption = "Figure 1.0 | Source: Esoph Dataset Breslow, N. E. and Day, N. E. (1980) Statistical Methods in Cancer Research.",
+       subtitle = "Size varies by number of subjects",
+       x = "Age Group",
+       y = "Proportion of Cases")+
+  theme_light()+
+  theme(legend.position = "bottom",
+        legend.background = element_rect(fill="white"),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 8))
+
+
+```
+
+`Figure 1.0` plots the proportion of cases of cancer to total subjects within each age group.  The size of the points vary by the number of observations in a given age grouping.  The plot demonstrates that as age increases, we see an increase in proportion of subjects with cancer.  Additionally, it indicates that there are very few cases of cancer at younger ages otherwise known as sparse data.
+
+
+**How does alcohol consumption relate to the presence of cancer?**
+
+```{r c3q1a2, eval = T, echo = F,warning=F}
+
+####Proportion Vs Alcohol Consumption
+c3_q1a2<- c3_q1 %>%
+  group_by(alcgp) %>%
+  summarise(ncases = sum(ncases),
+            ncontrol = sum(ncontrols),
+            prop = ncases/ncontrol)
+
+ggplot(c3_q1a2)+ 
+  geom_point(aes(x = alcgp, y = ncases/(ncases+ncontrol),size = ncontrol+ncases), show.legend = F)+
+  geom_text(aes(x = alcgp, y = (ncases/(ncases+ncontrol))+.025, label = paste0(ncases + ncontrol, " subjects")),size = 2.5,show.legend = F)+
+  ggtitle("Proportion of Cases vs Alcohol Consumption") +
+  labs(caption = "Figure 2.0 | Source: Esoph Dataset Breslow, N. E. and Day, N. E. (1980) Statistical Methods in Cancer Research.",
+       subtitle = "Size varies by number of subjects",
+       x = "Alcohol Consumption",
+       y = "Proportion of Cases")+
+  theme_light()
+
+```
+
+`Figure 2.0` plots the proportion of cases of cancer to total subjects considerinng alcohol consumotion.  The size of the points vary by the number of observations in a given consumption grouping.  The plot demonstrates that as consumption increases, we see an increase in proportion of subjects with cancer.  Additionally, the largest groupings (i.e. 0-39 g/day and 40-79 g/day) have the lowest proportion of observations that have concer.
+
+**How does tobacco consumption relate to the presence of cancer?**
+
+```{r c3q1a3, eval = T, echo = F,warning=F}
+
+####Proportion Vs Tobacco Consumption
+c3_q1a3<- c3_q1 %>%
+  group_by(tobgp) %>%
+  summarise(ncases = sum(ncases),
+            ncontrol = sum(ncontrols),
+            prop = ncases/ncontrol)
+
+ggplot(c3_q1a3)+ 
+  geom_point(aes(x = tobgp, y = ncases/(ncases+ncontrol),size = ncases+ncontrol), show.legend = F)+
+  geom_text(aes(x = tobgp, y = (ncases/(ncases+ncontrol))+.01, label = paste0(ncases+ncontrol, " cases")),size = 2.5,show.legend = F)+
+  ggtitle("Proportion of Cases vs Tobacco Consumption") +
+  labs(caption = "Figure 3.0 | Source: Esoph Dataset Breslow, N. E. and Day, N. E. (1980) Statistical Methods in Cancer Research.",
+       subtitle = "Size varies by number of subjects",
+       x = "Tobacco Consumption",
+       y = "Proportion of Cases")+
+  theme_light()
+
+
+
+```
+
+
+`Figure 3.0` plots the proportion of cases of cancer to total subjects considerinng tobacco consumotion.  The size of the points vary by the number of observations in a given consumption grouping.  The plot demonstrates that as consumption increases, we see an increase in proportion of subjects with cancer, though there is a plateau between 10 and 29 g/day. Additionally, the largest groupings (i.e. 0-9 g/day) has the lowest proportion of observations that have concer.
+
+
+*(b) Fit a binomial GLM with interactions between all three predictors. Use AIC as a criterion to select a model using the step function. Which model is selected?*
+
+
+The following output provides a summary for the final model selected using AIC criterion.  The available features included age group, alcohol consumption, tobacco consumption and interactions between these terms.  
+
+```{r 1b, eval = T, echo = F,warning=F}
+
+mod1 <- glm(cbind(ncases,ncontrols)~ . + agegp*alcgp + alcgp*tobgp + tobgp*agegp, family =  "binomial", data = c3_q1)
+
+mod1_AIC <- step(mod1, direction = "backward", trace = 0)
+summary(mod1_AIC)
+
+```
+
+The final model used only the main effects without interactions.  More simply, the formula can be written as:  
+
+$${AIC \space Selected \space Model:} {(Ncases, Ncontrols)=} \space {Agegp} + {Alcgp} + {Tobgp}$$
+
+
+*(c) All three factors are ordered and so special contrasts have been used appropriate for ordered factors involving linear, quadratic and cubic terms. Further simplification of the model may be possible by eliminating some of these terms. Use the unclass function to convert the factors to a numerical representation and check whether the model may be simplified.*
+
+To remove the effect of ordinal factors we can unclass out features.  This provides a binomial model linear in its predictors.  The table `Goodness of Fit - Unclass` shows the goodness of fit for this simplified model.  Notice the Deviance is near the degrees of freedom which indicates that there is a sufficient fit.  Furthermore inspecting the p-value (0.775) we gather that the fit is sufficient thus the model can be simplified.
+
+```{r 1c, eval = T, echo = F,warning=F}
+
+mod2 <- glm(cbind(ncases, ncontrols) ~ unclass(agegp) + unclass(tobgp)+ unclass(alcgp), family = "binomial", data = c3_q1)
+
+mod2_AIC <- step(mod2, direction = "backward", trace = 0)
+
+summary(mod2_AIC)
+
+chi_sq_linear <- pchisq(deviance(mod2_AIC), df.residual(mod2_AIC), lower.tail = F)
+
+data_frame_chi <- data.frame(`Degrees Of Freedom` =  df.residual(mod2_AIC),Deviance = round(deviance(mod2_AIC),3), `P-value`= round(chi_sq_linear,3))
+
+kable(data_frame_chi, 
+      align = rep("c",ncol(data_frame_chi)),
+      caption = "Goodness of Fit - Unclass",) %>%
+        kable_styling(position = "center",latex_options = "hold_position") 
+
+```
+
+*(d) Use the summary output of the factor model to suggest a model that is slightly more complex than the linear model proposed in the previous question*
+
+The summary output for the factor model suggests that the only feature that benefited from higher degree representation was age group.  Since the previous model showed that the model could be simplified it would be appropriate to develop a 3rd model that keeps the ordinal relationships for age groups but simplifies the other features.  The following formula represents the proposed model:
+
+$${Proposed \space Model:} {(Ncases, Ncontrols)=} \space {Agegp[Ordinal]} + {unclass(Alcgp)} + {unclass(Tobgp)}$$
+
+*(e) Does your final model fit the data? Is the test you make accurate for this data?*
+
+To test if the final model fits the data we can inspect the deviance of the model.  If the model is appropriate the deviance should follow a chi-squared distribution with n-p-1 degrees of freedom.  We can perform a chi-squared test on the model to see if the deviance follows this distribution.
+
+The table `Goodness of Fit - Proposed` shows the goodness of fit for the proposed model.  Notice the Deviance is near the degrees of freedom which indicates that there is a sufficient fit.  Furthermore inspecting the p-value (0.96) we gather that the fit is sufficient thus the model can be simplifiof the proposed model is sufficient.  The test for fit is appropriate since there are no indications of overdispersion requiring estimation of dispersion parameter and an F-test to be performed.
+
+```{r 1e, eval = T, echo = F,warning=F}
+
+mod3 <- glm(cbind(ncases, ncontrols) ~ agegp + unclass(tobgp)+ unclass(alcgp), family = binomial(), data = c3_q1)
+
+
+mod3_AIC <- step(mod3, direction = "backward", trace = 0)
+
+summary(mod3_AIC)
+
+chi_sq_proposed <- pchisq(deviance(mod3_AIC), df.residual(mod3_AIC), lower.tail = F)
+
+summary_df <- data.frame(`Degrees Of Freedom` =  df.residual(mod3_AIC),Deviance = round(deviance(mod3_AIC),3), `P-value`= round(chi_sq_proposed,3))
+
+kable(summary_df, 
+      align = rep("c",ncol(data_frame_chi)),
+      caption = "Goodness of Fit - Proposed",) %>%
+        kable_styling(position = "center",latex_options = "hold_position") 
+
+```
+
+*(f) Check for outliers in your final model*
+
+Inspecting a half norm plot we can visually identify outliers.  The following plot suggests that there are 2 "outliers" though they are not extreme enough for them to be considered true outliers or perhaps better stated, influential observations.
+
+```{r 1f, eval = T, echo = F,warning=F}
+
+halfnorm(residuals(mod3_AIC),main = "Halfnorm Plot - Proposed Model")
+
+```
+
+
+*(g) What is the predicted effect of moving one category higher in alcohol consumption?*
+
+Since we use the log-link function i.e.
+
+$$log(odds) = {\beta_{0}+\sum{\beta_{i}x_{i}}}$$
+
+then;
+
+$$Odds= e^{{\beta_{0}+\sum{\beta_{i}x_{i}}}}$$
+
+$$Odds= {e^{{\beta_{0}}}}....{e^{{\beta_{n}x_{i}}}}$$
+
+
+To isolate the predicted effect of moving one class up in alcohol consumption we need to exponentiate the correseponding coefficient.
+
+```{r 1g, eval = T, echo = F,warning=F}
+
+paste0("The predicted effect of moving up 1 group in alcohol consumption is: ",round(exp(coef(mod3_AIC)[8]),2))
+
+```
+
+
+*(h) Compute a 95% confidence interval for this predicted effect.*
+
+Table `Predicted Effect` displays the 95% confidence interval for a 1 class increase in alcohol consumption.  
+
+```{r 1h, eval = T, echo = F,warning=F}
+
+predicted_effect <- data.frame(coefficient = round(coef(mod3_AIC)[8],2), 
+                               `lower bound` = round(confint(mod3_AIC)[8,1],2),
+                               `Upper bound` = round(confint(mod3_AIC)[8,2],2),
+                               `Predicted Effect|Lower Bound` = round(exp(confint(mod3_AIC)[8,1]),2),
+                               `Predicted Effect|Upper Bound` =round(exp(confint(mod3_AIC)[8,2]),2))
+
+predicted_effect <- rownames_to_column(predicted_effect)
+
+colnames(predicted_effect) = c("Feature","Coefficient","Lower Bound", "Upper Bound","Predicted Effect|Lower Bound" ,"Predicted Effect|Upper Bound")
+
+kable(predicted_effect, 
+      align = rep("c",ncol(predicted_effect)),
+      caption = "Predicted Effect") %>%
+        kable_styling(position = "center",latex_options = "hold_position") %>%
+        column_spec(5:6,bold = T)
+
+
+
+```
+
+
+###Chapter 3 | Question 4
+
+*(a) Plot the activity (response) against the first three predictors.  Are any outliers in the response apparent? Remove any such cases*
+
+The following plots, plot activity vs the first 3 predictors of the `pyrimidines` dataset namely p1.size, p1.polar and p1.flex.  Outliers are identified in \textcolor{blue}{blue} and were removed.
+
+```{r 3a, eval = T, echo = F,warning=F}
+
+pyrdata <- pyrimidines
+
+ggplot(pyrdata) +
+  geom_point(aes(x=p1.polar , y= activity, col = activity<.25))+
+  scale_color_manual(breaks = c("FALSE","TRUE"),
+                     values = c("red","blue"),
+                     name = "Outlier")+
+  labs(title= "Activity vs P1.Polar")+
+  xlab("P1 Polar")+
+  ylab("Activity")+
+  theme(legend.position = "bottom")
+
+ggplot(pyrdata) +
+  geom_point(aes(x=p1.size , y= activity, col = activity<.25))+
+  scale_color_manual(breaks = c("FALSE","TRUE"),
+                     values = c("red","blue"),
+                     name = "Outlier")+
+  labs(title= "Activity vs P1.Polar")+
+  xlab("P1 Polar")+
+  ylab("Activity")+
+  theme(legend.position = "bottom")
+
+ggplot(pyrdata) +
+  geom_point(aes(x=p1.flex , y= activity, col = activity<.25))+
+  scale_color_manual(breaks = c("FALSE","TRUE"),
+                     values = c("red","blue"),
+                     name = "Outlier")+
+  labs(title= "Activity vs P1.Polar")+
+  xlab("P1 Polar")+
+  ylab("Activity")+
+  theme(legend.position = "bottom")
+
+
+pyrdata <- pyrdata %>%
+              filter(activity > 0.25)
+
+```
+
+
+*(b) Fit a Gaussian linear model for the response with all 26 predictors. How well does this model fit the data in terms of R2? Plot the residuals against the fitted values. Is there any evidence of a violation of the standard assumptions?*
+
+The following plots, plots the residuals vs fitted values and Q-Q plot to assess normality of residuals for the gaussian linear model.  The residual vs fitted model shows there is zero mean for residuals, the variance seems constant thought the q-q plaot suggests the residuals may not be normally distributed.  A shapiro-wilkes test confirms that at a 10% significance level we reject the null hypothesis that the residuals are normally distributed, while a bp test shows that we fail to reject that their is a constant variance.
+
+```{r 3b, eval = T, echo = F,warning=F}
+
+
+gaus_lm <- glm(activity ~ . , data = pyrdata, family= gaussian)
+
+rsquared_gaus_lm <- 1 - (gaus_lm$deviance/gaus_lm$null.deviance)
+
+plot(gaus_lm, which = c(1,2))
+
+
+paste0("The r-squared value for the gaussian linear model is:", rsquared_gaus_lm)
+
+
+```
+
+
+*(c) Fit a quasi-binomial model for the activity response. Compare the predicted values for this model to those for the Gaussian linear model. Take care to compute the predicted values in the appropriate scale. Compare the fitted coefficients between the two models. Are there any substantial differences?*
+
+The plot `Gaussian and Quasibinomial Fitted Values` plots fitted values from the quasibinomial and gaussion models against eachother.  Notice that they map approximately 1 to 1.
+
+The table `Ratio of Model Coefficients` compares the ratios of coefficients of the 2 models sorted by absolute ratio.  For the majority of the predictors the coefficients differ substantially.
+
+```{r 3c, eval = T, echo = F,warning=F}
+
+
+quas_lm <- glm(activity ~., data=pyrdata, family=quasibinomial())
+print(paste0("Quasibinomial Psudo R^2: ", round(1 - (quas_lm$deviance/quas_lm$null.deviance),2)))
+
+rsquared_gaus_lm <- 1 - (gaus_lm$deviance/gaus_lm$null.deviance)
+
+plot(quas_lm, which = c(1,2))
+
+
+paste0("The r-squared value for the gaussian linear model is:", rsquared_gaus_lm)
+
+predict(gaus_lm, pyrdata, type = "response")
+
+##equal to 
+
+pred_values <- cbind(gaus_lm$fitted.values, quas_lm$fitted.values)
+colnames(pred_values) = c("Gaussian","Quasibinomial")
+
+ggplot(pred_values) +
+  geom_point(aes(x = Gaussian, y = Quasibinomial))+
+  geom_abline(slope = 1, col = "red")+
+  labs(title = "Gaussian and Quasibinomial Fitted Values")+
+  xlab("Gaussian")+
+  ylab("Quasibinomial")+
+  theme_bw()
+
+coefs <- rownames_to_column(data.frame(cbind(coef(quas_lm),coef(gaus_lm))))
+
+colnames(coefs) = c("Coefficient", "Quasibinomial", "Gaussian")
+
+
+coef_summary <- coefs %>%
+  group_by(Coefficient) %>%
+  summarise(ratio = (Quasibinomial/Gaussian)) %>%
+  arrange(desc(abs(ratio)))
+
+kable(coef_summary,
+      align = rep("c", ncol(coef_summary)),
+      caption = "Ratio of Model Coefficients") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+
+
+```
+
+*(d) Fit a Gaussian linear model with the logit transformation applied to the re- sponse. Compare the coefficients of this model with the quasi-binomial model.*
+
+Table `Ratio of Model Coefficients | Logit and Quasibiniomial` shows the ratio of the coefficients of a quasinomial and gaussian model with logit response.  Notice that the coefficients are much closer this time. 
+
+```{r 3d, eval = T, echo = F,warning=F}
+
+
+gaus_logit <- glm(logit(activity) ~ . , data = pyrdata, family= gaussian)
+
+coefs2 <- rownames_to_column(data.frame(cbind(coef(quas_lm),coef(gaus_logit))))
+colnames(coefs2) = c("Coefficient", "Quasibinomial", "Gaussian-Logit")
+
+coef_summary2 <- coefs2 %>%
+  group_by(Coefficient) %>%
+  summarise(ratio = (Quasibinomial/`Gaussian-Logit`)) %>%
+  arrange(desc(abs(ratio)))
+
+kable(coef_summary2,
+      align = rep("c", ncol(coef_summary2)),
+      caption = "Ratio of Model Coefficients | Logit and Quasibinomial") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+
+```
+
+*(e) Fit a Beta regression model. Compare the coefficients of this model with that of logit response regression model.*
+
+Table `Ratio of Model Coefficients | Logit and Beta` shows the ratio of the coefficients of a quasinomial and gaussian model with logit response.  Notice that the coefficients are still close.
+
+```{r 3e, eval = T, echo = F,warning=F}
+library(mgcv)
+
+bbmodl <- gam(activity ~ p1.polar+p1.size+p1.flex+p1.h.doner+p1.h.acceptor+p1.pi.doner+p1.pi.acceptor+p1.polarisable+p1.sigma+p2.polar+p2.size+p2.flex+p2.h.doner+p2.h.acceptor+p2.pi.doner+p2.pi.acceptor+p2.polarisable+p2.sigma+p3.polar+p3.size+p3.flex+p3.h.doner+p3.h.acceptor+p3.pi.doner+p3.polarisable+p3.sigma, family=betar(), data = pyrdata)
+
+coef(bbmodl)
+
+coefs3 <- rownames_to_column(data.frame(cbind(coef(bbmodl),coef(gaus_logit))))
+colnames(coefs3) = c("Coefficient", "Beta", "Gaussian-Logit")
+
+coef_summary3 <- coefs3 %>%
+  group_by(Coefficient) %>%
+  summarise(ratio = (Beta/`Gaussian-Logit`)) %>%
+  arrange(desc(abs(ratio)))
+
+kable(coef_summary3,
+      align = rep("c", ncol(coef_summary3)),
+      caption = "Ratio of Model Coefficients | Logit and Beta") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+
+```
+
+*(F) What property of the response leads to the similarity of the models considered thus far in this question?*
+
+The similarities between the response variables is attributable to the fact they are valued between 0 and 1.
+
+###Chapter 5 | Question 3
+
+*Examine the data for the period of operation 1960–1974 for ships constructed in the years 1975–1979. Why are there no damage incidents?*
+
+There are no damage incidents as the ships were built after the operation period.
+
+*(b) Make a two-way table that shows the rate of damage incidents per 1000 months of aggregate service classified by type and year of construction. Comment on the table.*
+
+```{r, eval = T, echo = F,warning=F}
+library(MASS)
+shipdata <- ships
+shipdata$incidentrate <- shipdata$incidents/shipdata$service
+
+round(xtabs((incidents/service)*1000 ~ type+year, shipdata),2)
+
+
+```
+
+Ships of type "E" constructed in 1965 and ships lf type "D" constructed in 1970 have high service rates.
+
+*(c) Compute the rate of damage incidents per year for all cases where some service was recorded.*
+
+```{r, eval = T, echo = F,warning=F}
+shipdata %>% 
+  filter(service > 0) %>% 
+  group_by(service/12) %>%
+  dplyr::summarise(sum(incidents))
+
+
+           
+```
+
+*(d) Fit linear models with the observed rate of damage incidents as the response and the following three combinations of predictors: (i) All two-way interac- tions, (ii) main effects terms only, (iii) null (no predictors). Make sure year is treated as a factor rather than numerical variable. Which of these three models is preferred?*
+
+
+```{r, eval = T, echo = F,warning=F}
+
+shipdata <- shipdata %>%
+              filter(service>0)
+
+shipdata$incidentrate <- shipdata$incidents/shipdata$service
+#part i
+mod1 <- lm(incidentrate ~type+factor(year)+period+type:factor(year)+type:period+factor(year):period, data = shipdata)
+#part ii
+mod2 <- lm(incidentrate ~ type+ factor(year)+ period, data = shipdata)
+#part iii 
+mod3 <- lm(incidentrate ~ 1, data= shipdata)
+
+
+lm_results <- data.frame(interaction =round(summary(mod1)$adj.r.squared,2), 
+           main_effects = round(summary(mod2)$adj.r.squared,2),
+           Null = round(summary(mod3)$adj.r.squared,2))
+colnames(lm_results) = c("Interaction Terms",
+                         "Main Effects",
+                         "Null")
+
+kable(lm_results,
+      caption = "Comparing Linear Models",
+      align = rep("c",nrow(lm_results))) %>%
+  kable_styling(position = "center", latex_options = "hold_position") %>%
+  column_spec(1, bold = T)
+   
+```
+
+*(e) Fit a Poisson response model for the number of incidents with the predictors: log of service, type, year and period. Test whether the parameter associated with the service term can be one. Explain why we are interested in such a test.*
+
+The following output shows the summary of poisson model without offset:
+
+```{r, eval = T, echo = F,warning=F}
+shipdata <- subset(shipdata, service > 0)
+poismodl <-glm(incidents~log(service) + type + year + period, family=poisson, shipdata)
+summary(poismodl)
+```
+
+
+This output then shows the summary of poisson model with offset:
+
+```{r, eval = T, echo = F,warning=F}
+offmodl<-glm(incidents~offset(log(service)) + type + year + period, family=poisson, shipdata)
+summary(offmodl)
+
+```
+
+Introducing an offset simplified the model as the log(service) coefficient was set to 1 and the remaining coefficients remained similar as did the deviance.
+
+*(f) Fit the Poisson rate model with all two-way interactions of the three predictors. Does this model fit the data?* 
+
+```{r, eval = T, echo = F,warning=F}
+poismodl2<-glm(incidents~ offset(log(service))+(type + factor(year) + period)^2, family=poisson, shipdata)
+summary(poismodl2)
+
+paste0("Goodness of fit using Chi-squared test shows the model fit is sufficient P-value = ", round(pchisq(deviance(poismodl2), df.residual(poismodl2), lower.tail = F)),2)
+
+```
+
+*(g) Check the residuals. Are there any outliers? Plot residuals against the fitted values. Investigate any unusual features of this plot.* 
+
+```{r, eval = T, echo = F,warning=F}
+plot(residuals(poismodl2) ~ fitted(poismodl2), col = "dodgerblue", main = "Residuals Vs Fitted")
+abline(h=0, col = "red")
+
+```
+
+The residual plot suggests that there may be outliers present in the data.  We can explore this further by inspecting a half norm plot.
+
+```{r, eval = T, echo = F,warning=F}
+halfnorm(residuals(poismodl2), main = "Half-Norm Plot")
+```
+This plot confirms that there are a few outliers present in the data.
+
+*(h) Now fit the rate model with just the main effects and compare it to the interaction model. Which model is preferred?*
+
+The following summary output is for a model with just main effects.
+
+```{r, eval = T, echo = F,warning=F}
+poismodl3<-glm(incidents~ offset(log(service))+ type + factor(year) + period, family=poisson, shipdata)
+summary(poismodl3)
+```
+
+Anova testing allows for the comparison models with and without the two-way interaction terms.
+```{r, eval = T, echo = F,warning=F}
+anova(poismodl3,poismodl2,test="Chisq")
+```
+The anova test yields a p-value that is small therefore we reject the null hypothesis in favour of the larger model with interaction terms.
+
+*(i) Fit quasi-Poisson versions of the two previous models and repeat the comparison.*
+
+```{r, eval = T, echo = F,warning=F}
+quasipoismodl2<-glm(incidents~ offset(log(service))+(type + factor(year) + period)^2, family=quasipoisson(), shipdata)
+quasipoismodl3<-glm(incidents~ offset(log(service))+ type + factor(year) + period, family=quasipoisson(), shipdata)
+anova(quasipoismodl3,quasipoismodl2,test="Chisq")
+```
+The p-value is now 0.074 therfore our action depends on significance level.  At a 5% significance level so we fail to reject the main effect model in favor of the model with interaction terms.
+
+*(j) Interpret the coefficients of the main effects of the quasi-Poisson model. What factors are associated with higher and lower rates of damage incidents?*
+
+```{r, eval = T, echo = F,warning=F}
+summary(quasipoismodl3)
+```
+
+It is interesting to note that incidence rates are more sensitive to being built in 65/70 than 75.  Also note ships of type C and B are likely to have lower incidence rates.
+
+###Chapter 5 | Question 3
+
+This dataset, Africa, gives information about the number of military coups in sub-Saharan Africa.
+These are plots of the interaction between the response variable and each of the predictors.
+
+*(a) Plot the response, the number of military coups against each of the other variables.)*
+
+```{r, eval = T, echo = F,warning=F}
+africadata <- africa
+ggplot(africadata, aes(x=miltcoup, y=oligarchy)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+ggplot(africadata, aes(x=miltcoup, y=pollib)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+
+ggplot(africadata, aes(x=miltcoup, y=parties)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+ggplot(africadata, aes(x=miltcoup, y=pctvote)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+ggplot(africadata, aes(x=miltcoup, y=popn)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+ggplot(africadata, aes(x=miltcoup, y=size)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+ggplot(africadata, aes(x=miltcoup, y=numelec)) + 
+  geom_point()
+```
+
+```{r, eval = T, echo = F,warning=F}
+ggplot(africadata, aes(x=miltcoup, y=numregim)) + 
+  geom_point()
+```
+
+*(b) Use a stepwise AIC-based method to select a model that uses a smaller number of the available predictors.*
+
+```{r, eval = T, echo = F,warning=F}
+africadata <- na.omit((africa))
+q4mdl1 <- glm(miltcoup~., family = poisson, africadata)
+q4mdl1AIC<-step(q4mdl1, trace=0)
+summary(q4mdl1AIC)
+```
+
+The following predictors are considered significant using AIC:
++ oligarchy
++ pollib 
++ parties.
+
+*(c) Does the deviance of your selected model indicate a good fit to the data?*
+
+The deviance is near the degrees of freedom and the null deviance is reduced by about half.  Therefore the deviance does indicate a good fit.
+
+*(d) Make a QQ plot of the residuals and comment. Plot the residuals against the fitted values and interpret the result. What is the source of the lines of points observed on this plot?*
+
+```{r, eval = T, echo = F,warning=F}
+plot(q4mdl1AIC, which = c(2,1))
+```
+The QQ plot doesn't suggest normality.
+
+The lines on residual vs fitted plot are caused by having a discrete response variable though continuous predictor.
+
+
+*(e) Give an interpretation of the coefficients of this plot*
+
+```{r, eval = T, echo = F,warning=F}
+summary(q4mdl1AIC)
+```
+
++ If a country is liberal there is predicted to be less number of successful coups.
+
++ Positive relationship b/w the number of years the country run by an oligarchy and the the number of  military coups. 
+
+
+*(f) Count the number of countries with each number of military coups. Compare this with the numbers predicted by the previous model. Is there any evidence of excess of countries with zero coups? Use a Chi-squared test as implemented in chisq.test().*
+
+Tally of the number of countries by number of coups.
+
+```{r, eval = T, echo = F,warning=F}
+africadata %>%
+  group_by(miltcoup) %>%
+  tally()
+```
+
+
+```{r, eval = T, echo = F,warning=F}
+pred_q4<-data.frame(predicted_values = predict(q4mdl1AIC, type="response"))
+pred_q4
+
+cbind(africadata$multicoup,pred_q4)
+```
+
+A difference is attributable to distribution of the predicted values.  In our case there are many predicted values less than 1. 
+
+```{r, eval = T, echo = F,warning=F}
+chisq.test(africadata$miltcoup, africadata$pred_q4)
+```
+The p-value is very small so we reject the null hypothesis which states they are independent in favor of the alternative, this means the numbers are dependent.
+

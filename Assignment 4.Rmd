@@ -1,0 +1,384 @@
+---
+title: "SS9155 - Assignment 4 - 250620601"
+author: "Ravin Lathigra"
+date: '2019-03-26'
+output:
+  pdf_document:
+    latex_engine: xelatex
+always_allow_html: yes
+---
+
+<style>
+pre code, pre, code {
+  white-space: pre !important;
+  overflow-x: scroll !important;
+  word-break: keep-all !important;
+  word-wrap: initial !important;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(width=100)
+```
+
+
+```{r, eval= T, echo = F, comment=NA, warning=F, message=F}
+library(kableExtra)  #Style tables
+library(tidyverse)   #contains ggplot2,dplyr,tidyr, readr,purr,tibble,stringr,forcats
+library(faraway)
+library(lme4)
+```
+
+## Chapter 8 | Question 3
+
+```{r, eval = T, warning=FALSE, comment=NA}
+### Import Data
+data(gala,package="faraway")
+
+data <- gala
+
+```
+
+### Q3. Part a
+
+**Fit a Poisson model to the species response with the five geographic variables as predictors. Do not use the endemics variable. Report the values of the coefficients and the deviance.**
+
+Table 1 and Table 2 show the coefficients and deviance for a poisson model with geographical features used to model the response, Speciesm respectively.
+
+```{r q1_a, eval = T, warning=FALSE, comment=NA}
+
+gala_pois <- glm(Species ~ Area + Elevation + Nearest + Scruz + Adjacent, family = poisson, data= data )
+
+gala_pois.coef <- as_tibble(data.frame(gala_pois$coefficients) %>% rownames_to_column() %>%
+                                          rename(Feature = 'rowname',
+                                                 Coefficient = gala_pois.coefficients))
+
+gala_pois.resdev <- as_tibble(data.frame(gala_pois$deviance) %>% rownames_to_column() %>%
+                                          rename(Deviance = gala_pois.deviance) %>%
+                                          mutate(DF = 24) %>%
+                                          dplyr::select(-rowname))
+
+gala_pois.nulldev <- gala_pois$null.deviance
+gala_pois.nulldf <- gala_pois$df.null
+
+
+
+gala_pois.deviance <- rbind(gala_pois.resdev,data.frame(Deviance = gala_pois.nulldev, DF = gala_pois.nulldf)) %>% rownames_to_column() %>% 
+  rename(Type = rowname) %>%
+  mutate(Type = ifelse(Type == 1,"Residual","Null"))
+
+kable(gala_pois.coef,
+      align = rep("c",ncol(gala_pois.coef)),
+      booktabs = T,
+      caption = "Poisson Coefficients") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+
+kable(gala_pois.deviance,
+      align = rep("c",ncol(gala_pois.deviance)),
+      booktabs = T,
+      caption = "Poisson Deviance") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+
+
+
+
+```
+
+
+### Q3. Part b
+
+**For a Poisson GLM, derive η, dη/dμ, V(μ) and the weights to be used in an iteratively fit GLM. What is the form of the adjusted dependent variable here?**
+
+
+Considering a response that is poisson distributed its general form is:
+
+$$f(y|\theta,\phi) = \dfrac{e^{-\mu}\mu^{y}}{y!}$$
+
+where,
+
+$$\theta = log(\mu), \phi = 1, a(\phi) = 1, b(\theta) = e^{\theta},c(y,\theta)=-log(y)$$
+
+$$\eta = log \mu$$
+
+$$\dfrac{d\eta}{d\mu} = \dfrac{d(log\mu)}{d\mu} = \dfrac{1}{\mu}$$
+
+$$V(u) = \dfrac{b′′\theta}{w} = \mu$$
+
+
+$$w = (\dfrac{d(log\mu)}{d\mu})^2 V(\mu) = \mu$$
+
+adjusted dependent variable takes the form:
+
+$$z = \hat\eta + (y-\hat\mu)\dfrac{d(log\mu)}{d\mu}$$
+```{r q1_b, eval = T, warning=FALSE, comment=NA}
+
+y <- data$Species
+
+#use y for initial guess of mu
+mu <- y 
+
+eta <- log(mu)
+
+vu <- mu
+
+z <- eta + (y-mu)/(mu)
+
+w <- mu
+
+```
+
+
+### Q3. Part c
+
+**Using the observed response as initial values, compute the first stage of the iteration, stopping after the first linear model fit. Compare the coefficients of this linear model to those found in the GLM fit. How close are they?**
+
+After the first stage of iteration, the coefficients of the linear model are as follows:
+
+```{r q1_c, eval = T, warning=FALSE, comment=NA}
+
+lmod <- lm(z~Area+Elevation+Nearest+Scruz+Adjacent, weights=w, data=data)
+coef(lmod)
+
+```
+
+The question is *"how are these coefficients to those from the glm fit?"* the following output expresses the ratio of the coefficients from the linear model to those from the glm.
+
+```{r q1_c2, eval = T, warning=FALSE, comment=NA}
+
+coef(lmod)/coef(gala_pois)
+
+```
+
+Notice that while some coefficients are similar i.e. ratios are close to 1, a few have drastically different coefficients.
+
+### Q3. Part d
+
+**Continue the iteration to get the next η and μ. Use this to compute the current value of the deviance. How close is this to the deviance from the GLM?**
+
+After the next stage of iteration, the coefficients of the linear model are as follows:
+```{r q1_d, eval = T, warning=FALSE, comment=NA}
+
+
+eta <- lmod$fit
+
+mu <- exp(eta)
+
+vu <- mu
+
+z <- eta + (y-mu)/(mu)
+
+w <- mu
+
+
+
+lmod2 <- lm(z~Area+Elevation+Nearest+Scruz+Adjacent, weights=w, data=data)
+coef(lmod2)
+
+```
+
+*"How are these coefficients to those from the glm fit?"* the following output expresses the ratio of the coefficients from the second interation of the linear model to those from the glm.
+
+```{r q1_d2, eval = T, warning=FALSE, comment=NA}
+
+coef(lmod2)/coef(gala_pois)
+
+```
+
+Notice that the ratio of the coefficients have improved materially from the previous iteration which is as we would expect i.e. quick convergence.
+
+
+### Q3. Part e
+
+**Compute one more iteration of the GLM fit, reporting the next calculation of the coefficients and deviance. How close are these to target now?**
+
+After the next stage of iteration, the coefficients of the linear model are as follows:
+
+```{r q1_e, eval = T, warning=FALSE, comment=NA}
+
+
+eta <- lmod2$fit
+
+mu <- exp(eta)
+
+vu <- mu
+
+z <- eta + (y-mu)/(mu)
+
+w <- mu
+
+
+
+lmod3 <- lm(z~Area+Elevation+Nearest+Scruz+Adjacent, weights=w, data=data)
+coef(lmod3)
+
+```
+
+*"How are these coefficients to those from the glm fit?"* the following output expresses the ratio of the coefficients from the third interation of the linear model to those from the glm.
+
+```{r q1_e2, eval = T, warning=FALSE, comment=NA}
+
+coef(lmod3)/coef(gala_pois)
+
+```
+
+Notice that the ratio of the coefficients are essentially equal after this iteration.
+
+### Q3. Part f
+
+**Repeat these iterations a few more times,computing the deviance in each time. Stop when the deviance does not change much. Compare your final estimated coefficients to that produced by the GLM fit.**
+
+The following output shows the ratio of coefficients from futher iterations and those from the glm model as well as the deviance.  After the 5th iteration, the deviance converges and the coefficients are equal to those from the glm model. 
+
+```{r q1_f, eval = T, warning=FALSE, comment=NA}
+
+lmod4 <- lmod3
+
+for (i in 4:6){
+  
+  eta <- lmod4$fit
+  
+  mu <- exp(eta)
+  
+  vu <- mu
+  
+  z <- eta + (y-mu)/(mu)
+  
+  w <- mu
+  
+  deviance = round(2*sum(data$Species*log(data$Species/mu)-(data$Species-mu)),10)
+  
+  lmod4 <- lm(z~Area+Elevation+Nearest+Scruz+Adjacent, weights=w, data=data)
+  
+  cat("Iteration: ", i, "|", "Ratio of Coefficients: ", coef(lmod4)/coef(gala_pois), "|", "Deviance:", deviance,"\n")
+
+}
+
+final_model <- lmod4
+```
+
+
+
+### Q3. Part g
+
+**Use your final iterated linear model fit to produce standard errors for the coefficients. How close are these to that produced by the direct GLM fit?**
+
+Table 3 shows the standard errors of the coefficients for both the model from the final iteration and the glm model.  The standard errors from the iterated linear model are at least 5x greater than those from the GLM.
+
+
+```{r q1_g, eval = T, warning=FALSE, comment=NA}
+
+iteration_6 <- data.frame(summary(final_model)$coefficients[,2]) %>% rownames_to_column() %>% 
+  rename(`Standard Errors - Iteration 6` = summary.final_model..coefficients...2.,
+         Feature = rowname)
+
+GLM <- data.frame(summary(gala_pois)$coefficients[,2]) %>% rownames_to_column() %>% 
+  rename(`Standard Errors - GLM` = summary.gala_pois..coefficients...2.,
+         Feature = rowname)
+
+std_err_summary <- iteration_6 %>% 
+                      mutate(`Standard Errors - GLM` = round(GLM$`Standard Errors - GLM`,5),
+                             `Standard Errors - Iteration 6` = round(`Standard Errors - Iteration 6`,5)) %>%
+                      mutate(Ratio = `Standard Errors - Iteration 6`/`Standard Errors - GLM`)
+
+
+kable(std_err_summary,
+      align = rep("c",ncol(std_err_summary)),
+      booktabs = T,
+      caption = "Comparison of Standard Errors of Coefficients") %>%
+  kable_styling(position = "center", latex_options = "hold_position")
+
+
+```
+
+## Chapter 10 | Question 1
+
+```{r, eval = T, warning=FALSE, comment=NA}
+### Import Data
+data2 <- denim
+
+```
+
+### Q1. Part a
+
+**Plot the data and comment.**
+
+The following plot compares the percentage of waste relative to target across 5 suppliers.  It is interesting that supplier 5 generally tends to have a larger proportion of waste than other suppiers.  Suppliers 2,3 and 4 have similar behavior with respect to waste though supplier 2 has some extreme outliers worth investigating.  Supplier 1 has the lowest waste, though similar to supplier 2, has outliers worth investigating. 
+
+```{r q2_a, eval = T, warning=FALSE, comment=NA}
+
+ggplot(data2) +
+  geom_boxplot(aes(x = supplier, y = waste), fill = "lightblue", alpha = .4)+
+  ggtitle("Waste by Supplier")+
+  labs(caption = "Data: Denim")+
+  xlab("Supplier")+
+  ylab("Waste")+
+  theme_bw()
+
+
+```
+
+
+### Q1. Part b
+
+**Fit the linear fixed effects model. Is the operator significant?**
+
+
+```{r q2_b, eval = T, warning=FALSE, comment=NA, message = F}
+lmod <- aov(waste ~ supplier, data2)
+summary(lmod)
+
+
+```
+
+The effect of the supplier is not statistically significant as shown by the p-value of 0.334.
+
+### Q1. Part d
+
+**Analyze the data with supplier as a random effect. What are the estimated standard deviations of the effects?**
+
+
+```{r q2_d, eval = T, warning=FALSE, comment=NA}
+
+op1 <- options(contrasts=c("contr.sum", "contr.poly"))
+
+mod <- lmer(waste ~ (1|supplier), denim)
+
+summary(mod)
+
+```
+
+The random effect of supplier has a standard deviation of 0.8192.
+
+
+### Q1. Part e
+
+**Test the significance of the supplier term.**
+
+
+```{r q2_e, eval = T, warning=FALSE, comment=NA}
+
+nullmod <- lm(waste ~ 1, data2)
+lrtstat <- as.numeric(2*(logLik(mod)-logLik(nullmod)))
+pvalue <- pchisq(lrtstat,1,lower=FALSE)
+pvalue
+
+```
+
+The above output shows that the p-value is 0.1690 exceeds both 5% and 10% significance levels suggesting the supplier term not signifigant.
+
+
+### Q1. Part f
+
+**Compute confidence intervals for the random effect SDs.**
+
+
+```{r q2_f, eval = T, warning=FALSE, comment=NA, message= F}
+set.seed(1993)
+confint(mod, method= "boot")
+
+```
+The output above displays the confidence intervals for the random effect SDs [0,3.49].
+
+
